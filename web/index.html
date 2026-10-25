@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OogaChaka 접속 허용</title>
+  <style>
+    body { font-family: system-ui, "Malgun Gothic", sans-serif; background: #f4f6f8; color: #1f2933; margin: 0; }
+    main { max-width: 440px; margin: 12vh auto; padding: 32px; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+    h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    p.sub { color: #52606d; margin: 0 0 24px; font-size: .9rem; }
+    button { width: 100%; padding: 12px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; font-size: 1rem; cursor: pointer; }
+    button.secondary { background: #e5e7eb; color: #1f2933; margin-top: 8px; }
+    button:disabled { opacity: .6; cursor: default; }
+    label { display: block; margin: 16px 0 6px; font-size: .9rem; }
+    select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #cbd2d9; font-size: 1rem; }
+    #status { margin-top: 20px; padding: 12px; border-radius: 8px; background: #eef2ff; font-size: .9rem; white-space: pre-line; }
+    #status.error { background: #fee2e2; }
+    #status:empty { display: none; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>OogaChaka 접속 허용</h1>
+    <p class="sub">로그인하면 현재 IP에서 서버(22, 443)에 접속할 수 있도록 열고 서버를 시작합니다.</p>
+
+    <section id="login-panel">
+      <button id="login-btn">로그인</button>
+    </section>
+
+    <section id="access-panel" hidden>
+      <p>로그인: <strong id="user-email"></strong></p>
+      <label for="minutes">접속 허용 시간</label>
+      <select id="minutes">
+        <option value="1">1분 (테스트)</option>
+        <option value="120" selected>2시간</option>
+      </select>
+      <button id="access-btn" style="margin-top:16px">접속 허용 요청</button>
+      <button id="logout-btn" class="secondary">로그아웃</button>
+    </section>
+
+    <div id="status"></div>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
