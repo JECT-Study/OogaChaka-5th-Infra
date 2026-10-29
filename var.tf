@@ -15,6 +15,12 @@ variable "admin_cidr" {
     description = "SSH 접근을 허용할 관리자 IP (예: 1.2.3.4/32)"
 }
 
+variable "discord_webhook_url" {
+    type = string
+    sensitive = true
+    description = "RDS 시작/종료 알림을 보낼 Discord 웹훅 URL (terraform.tfvars 에 작성, 커밋 금지)"
+}
+
 variable "db_name" {
     type = string
     default = "oogachaka"

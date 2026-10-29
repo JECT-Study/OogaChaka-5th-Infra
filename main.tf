@@ -139,16 +139,7 @@ module "rds_sg" {
     vpc_id = module.vpc.vpc_id
 }
 
-# web ec2 보안그룹 80 443 22
-module "web_in_http" {
-    source = "./modules/sg_ingress_rule"
-    security_group_id = module.web_sg.id
-    description = "HTTP"
-    from_port = 80
-    to_port = 80
-    cidr_ipv4 = "0.0.0.0/0"
-}
-
+# web ec2 보안그룹 443 22
 module "web_in_https" {
     source = "./modules/sg_ingress_rule"
     security_group_id = module.web_sg.id
@@ -510,4 +501,32 @@ module "stop_schedule" {
     schedule_expression = "rate(30 minutes)"
     lambda_arn = module.stop_ec2_lambda.function_arn
     lambda_function_name = module.stop_ec2_lambda.function_name
+}
+
+# RDS 시작 / 종료 이벤트 -> SNS -> Lambda -> Discord 알림
+module "notify_rds_iam" {
+    source = "./modules/lambda_iam"
+    role_name = "ooga_chaka_notify_rds"
+    statements = []
+}
+
+module "notify_rds_lambda" {
+    source = "./modules/lambda"
+    function_name = "ooga_chaka_notify_rds"
+    source_dir = "${path.module}/lambda/notify_rds"
+    role_arn = module.notify_rds_iam.role_arn
+    timeout = 15
+    environment = {
+        DISCORD_WEBHOOK_URL = var.discord_webhook_url
+    }
+}
+
+# availability 카테고리 = 시작 중(0088) / 시작 완료(0006) / 종료 중(0004) / 종료 완료(0087)
+module "rds_event_notify" {
+    source = "./modules/rds_event_notify"
+    topic_name = "ooga_chaka_rds_events"
+    db_identifier = local.db_identifier
+    event_categories = ["availability", "notification"]
+    lambda_arn = module.notify_rds_lambda.function_arn
+    lambda_function_name = module.notify_rds_lambda.function_name
 }
