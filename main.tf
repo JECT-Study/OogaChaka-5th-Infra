@@ -274,6 +274,10 @@ module "web_ec2" {
     associate_public_ip = true
     instance_name = "ooga_chaka_web"
     iam_instance_profile = module.ssm_iam.instance_profile_name
+    env_vars = {
+        APP_PRIVATE_IP = module.app_ec2.private_ip
+        LOG_PRIVATE_IP = module.log_ec2.private_ip
+    }
 }
 
 
