@@ -1,0 +1,107 @@
+name: Deploy nginx (web)
+
+# nginx 브랜치에 push 하면 S3 에 올리고 SSM 으로 web EC2 에 배포한다.
+# AWS 인증은 OIDC (Terraform 의 web_github_deploy 역할, nginx 브랜치만 허용)
+on:
+  push:
+    branches: [nginx]
+    paths-ignore:
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  TARGET_NAME_TAG: ooga_chaka_web
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # 저장소 Settings > Secrets and variables > Actions > Variables 에 AWS_ROLE_ARN 등록
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package
+        run: tar czf nginx.tar.gz docker-compose.yml deploy.sh nginx
+
+      - name: Upload to S3
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "BUCKET=ooga-chaka-deploy-${ACCOUNT_ID}" >> "$GITHUB_ENV"
+          echo "KEY=nginx/${GITHUB_SHA}.tar.gz" >> "$GITHUB_ENV"
+          aws s3 cp nginx.tar.gz "s3://ooga-chaka-deploy-${ACCOUNT_ID}/nginx/${GITHUB_SHA}.tar.gz"
+
+      - name: Deploy to web EC2 (SSM Run Command)
+        run: |
+          # web EC2 에서 실행될 스크립트 (S3 에서 받아 풀고 deploy.sh 실행)
+          cat > remote.sh <<'EOF'
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          export AWS_DEFAULT_REGION=__REGION__
+          if ! command -v aws >/dev/null 2>&1; then
+              apt-get update -y
+              apt-get install -y unzip curl
+              curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+              unzip -q -o /tmp/awscliv2.zip -d /tmp
+              /tmp/aws/install --update
+          fi
+          DEST=/opt/ooga/nginx
+          TMP=$(mktemp -d)
+          aws s3 cp "s3://__BUCKET__/__KEY__" "$TMP/nginx.tar.gz"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+          tar -xzf "$TMP/nginx.tar.gz" -C "$DEST"
+          rm -rf "$TMP"
+          bash "$DEST/deploy.sh"
+          EOF
+          sed -i "s|__REGION__|${AWS_REGION}|; s|__BUCKET__|${BUCKET}|; s|__KEY__|${KEY}|" remote.sh
+          jq -Rs '{commands: [.]}' remote.sh > params.json
+
+          CMD_ID=$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --targets "Key=tag:Name,Values=${TARGET_NAME_TAG}" \
+            --parameters file://params.json \
+            --timeout-seconds 900 \
+            --comment "nginx ${GITHUB_SHA::7}" \
+            --query Command.CommandId --output text)
+          echo "command id: ${CMD_ID}"
+
+          INSTANCE_ID=""
+          STATUS=""
+          for i in $(seq 1 180); do
+            sleep 5
+            read -r INSTANCE_ID STATUS <<< "$(aws ssm list-command-invocations \
+              --command-id "${CMD_ID}" \
+              --query 'CommandInvocations[0].[InstanceId,Status]' --output text)"
+            if [ "${INSTANCE_ID}" = "None" ] || [ -z "${INSTANCE_ID}" ]; then
+              if [ "$i" -ge 12 ]; then
+                echo "::error::대상 EC2(Name=${TARGET_NAME_TAG})를 찾지 못했습니다. 서버가 꺼져 있으면 로그인 페이지에서 켠 뒤 다시 실행하세요."
+                exit 1
+              fi
+              continue
+            fi
+            case "${STATUS}" in
+              Success|Failed|TimedOut|Cancelled|Cancelling|DeliveryTimedOut|ExecutionTimedOut|Undeliverable|Terminated) break ;;
+            esac
+          done
+
+          echo "instance: ${INSTANCE_ID}  status: ${STATUS}"
+          aws ssm get-command-invocation \
+            --command-id "${CMD_ID}" --instance-id "${INSTANCE_ID}" \
+            --plugin-name aws:runShellScript \
+            --query '[StandardOutputContent,StandardErrorContent]' --output text || true
+
+          [ "${STATUS}" = "Success" ]

@@ -1,0 +1,4 @@
+# EC2(Linux) 에서 실행되는 파일은 Windows 에서도 LF 로 유지
+*.sh text eol=lf
+*.yml text eol=lf
+*.template text eol=lf
