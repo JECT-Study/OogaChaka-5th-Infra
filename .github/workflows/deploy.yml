@@ -28,6 +28,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # (임시) OIDC 로그인 실패 원인 확인용 - 해결되면 이 단계는 삭제
+      - name: Debug OIDC claims
+        env:
+          ROLE: ${{ vars.AWS_ROLE_ARN }}
+        run: |
+          echo "role=[${ROLE}]"
+          TOKEN=$(curl -sH "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
+          python3 -c '
+          import sys, json, base64
+          p = sys.argv[1].split(".")[1]
+          p += "=" * (-len(p) % 4)
+          c = json.loads(base64.urlsafe_b64decode(p))
+          for k in ("sub", "aud", "repository", "ref", "event_name", "job_workflow_ref"):
+              print(k, "=", c.get(k))
+          ' "${TOKEN}"
+
       # 저장소 Settings > Secrets and variables > Actions > Variables 에 AWS_ROLE_ARN 등록
       - uses: aws-actions/configure-aws-credentials@v4
         with:
