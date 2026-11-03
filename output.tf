@@ -37,3 +37,8 @@ output "cognito_user_pool_id" {
 output "deploy_bucket_name" {
     value = module.deploy_bucket.bucket_id
 }
+
+
+output "web_github_deploy_role_arn" {
+    value = module.web_github_deploy.role_arn
+}

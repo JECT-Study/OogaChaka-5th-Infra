@@ -546,3 +546,19 @@ module "rds_event_notify" {
     lambda_arn = module.notify_rds_lambda.function_arn
     lambda_function_name = module.notify_rds_lambda.function_name
 }
+
+# GitHub OIDC 공급자 (계정당 1개, 서버별 배포 역할이 공유)
+module "github_oidc_provider" {
+    source = "./modules/github_oidc_provider"
+}
+
+# web : GitHub Actions -> S3 업로드 + SSM(Name 태그) 로 web EC2 에 배포
+module "web_github_deploy" {
+    source = "./modules/github_oidc"
+    role_name = "ooga_chaka_github_deploy_web"
+    oidc_provider_arn = module.github_oidc_provider.arn
+    github_repo = "JECT-Study/OogaChaka-5th-Infra"
+    branch = "nginx"
+    deploy_bucket_arn = module.deploy_bucket.bucket_arn
+    target_name_tag = "ooga_chaka_web"
+}
