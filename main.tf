@@ -358,7 +358,7 @@ locals {
         SECURITY_GROUP_ID = module.web_sg.id
         INSTANCE_IDS = join(",", local.access_instance_ids)
         DB_INSTANCE_ID = local.db_identifier
-        PORTS = "22,443"
+        PORTS = "22,443,80"
         DEFAULT_HOURS = "2"
         MAX_HOURS = "2"
         RULE_DESCRIPTION = "ooga-access"
