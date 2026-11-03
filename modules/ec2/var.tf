@@ -31,3 +31,9 @@ variable "volume_size" {
 variable "instance_name" {
   type        = string
 }
+
+variable "iam_instance_profile" {
+  type        = string
+  default     = null
+  description = "EC2 에 붙일 인스턴스 프로파일 이름"
+}

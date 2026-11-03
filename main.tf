@@ -250,6 +250,19 @@ module "log_out_all" {
     description = "All outbound"
 }
 
+# 배포 파일 저장용 버킷 (비공개). EC2 가 SSM Run Command 로 여기서 파일을 받아간다
+module "deploy_bucket" {
+    source = "./modules/s3"
+    bucket_name = "ooga-chaka-deploy-${local.account_id}"
+}
+
+# EC2 인스턴스 프로파일 (SSM 등록 + 배포 버킷 읽기)
+module "ssm_iam" {
+    source = "./modules/ssm_iam"
+    name = "ooga_chaka_ssm_ec2"
+    deploy_bucket_arn = module.deploy_bucket.bucket_arn
+}
+
 # web EC2
 module "web_ec2" {
     source = "./modules/ec2"
@@ -260,6 +273,7 @@ module "web_ec2" {
     key_name = var.key_name
     associate_public_ip = true
     instance_name = "ooga_chaka_web"
+    iam_instance_profile = module.ssm_iam.instance_profile_name
 }
 
 
@@ -273,6 +287,7 @@ module "app_ec2" {
     key_name = var.key_name
     associate_public_ip = true    # NAT 없이 IGW 로 outbound 하기 위해 필요
     instance_name = "ooga_chaka_app"
+    iam_instance_profile = module.ssm_iam.instance_profile_name
 }
 
 # log EC2
@@ -285,6 +300,7 @@ module "log_ec2" {
     key_name = var.key_name
     associate_public_ip = true
     instance_name = "ooga_chaka_log"
+    iam_instance_profile = module.ssm_iam.instance_profile_name
 }
 
 

@@ -33,3 +33,7 @@ output "access_api_endpoint" {
 output "cognito_user_pool_id" {
     value = module.cognito.user_pool_id
 }
+
+output "deploy_bucket_name" {
+    value = module.deploy_bucket.bucket_id
+}
