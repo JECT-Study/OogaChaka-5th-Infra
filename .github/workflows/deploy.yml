@@ -65,6 +65,8 @@ jobs:
         run: |
           # web EC2 에서 실행될 스크립트 (S3 에서 받아 풀고 deploy.sh 실행)
           cat > remote.sh <<'EOF'
+          # SSM RunShellScript 는 Ubuntu 에서 sh(dash) 로 실행하므로 bash 로 다시 실행한다
+          [ -n "${BASH_VERSION:-}" ] || exec bash "$0" "$@"
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
           export AWS_DEFAULT_REGION=__REGION__
