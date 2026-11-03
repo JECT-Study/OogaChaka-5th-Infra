@@ -562,6 +562,9 @@ module "web_github_deploy" {
     role_name = "ooga_chaka_github_deploy_web"
     oidc_provider_arn = module.github_oidc_provider.arn
     github_repo = "JECT-Study/OogaChaka-5th-Infra"
+    # JECT-Study 조직의 토큰 sub 는 repo:JECT-Study@조직ID/OogaChaka-5th-Infra@저장소ID:ref:... 형식
+    github_owner_id = "155141962"
+    github_repo_id = "1431137998"
     branch = "nginx"
     deploy_bucket_arn = module.deploy_bucket.bucket_arn
     target_name_tag = "ooga_chaka_web"
