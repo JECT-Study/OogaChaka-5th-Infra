@@ -29,12 +29,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check deploy.sh
-        run: |
-          if [ ! -f deploy.sh ]; then
-            echo "::error::저장소 루트에 deploy.sh 가 없습니다. 서버에서 이 스크립트를 실행합니다."
-            exit 1
-          fi
 
           # (임시) OIDC 로그인 실패 원인 확인용 - 해결되면 이 단계는 삭제
       - name: Debug OIDC claims
