@@ -1,0 +1,62 @@
+name: Deploy log (Grafana/Loki)
+
+# log 브랜치에 push 하면 S3 에 올리고 SSM 으로 log EC2 에 배포한다.
+# AWS 인증은 OIDC (Terraform 의 log_github_deploy 역할, log 브랜치만 허용)
+# 저장소 루트에 deploy.sh 가 있어야 하며, 서버의 /opt/ooga/log 에서 실행된다.
+on:
+  push:
+    branches: [log]
+    paths-ignore:
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-log
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  TARGET_NAME_TAG: ooga_chaka_log
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy.sh
+        run: |
+          if [ ! -f deploy.sh ]; then
+            echo "::error::저장소 루트에 deploy.sh 가 없습니다. 서버에서 이 스크립트를 실행합니다."
+            exit 1
+          fi
+
+          # (임시) OIDC 로그인 실패 원인 확인용 - 해결되면 이 단계는 삭제
+      - name: Debug OIDC claims
+        env:
+          ROLE: ${{ vars.AWS_ROLE_ARN_LOG }}
+        run: |
+          echo "role=[${ROLE}]"
+          TOKEN=$(curl -sH "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com" | jq -r .value)
+          python3 -c '
+          import sys, json, base64
+          p = sys.argv[1].split(".")[1]
+          p += "=" * (-len(p) % 4)
+          c = json.loads(base64.urlsafe_b64decode(p))
+          for k in ("sub", "aud", "repository", "ref", "event_name", "job_workflow_ref"):
+              print(k, "=", c.get(k))
+          ' "${TOKEN}"
+
+      # web 과 같은 저장소라서 변수 이름을 다르게 쓴다.
+      # 저장소 Settings > Secrets and variables > Actions > Variables 에 AWS_ROLE_ARN_LOG 등록
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN_LOG }}
+          aws-region: ${{ env.AWS_REGION }}
+
