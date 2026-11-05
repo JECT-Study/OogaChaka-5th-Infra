@@ -11,6 +11,13 @@ server {
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 1d;
 
+    # nginx 자체 상태 확인 (app 서버와 무관하게 200)
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
     location / {
         include /etc/nginx/conf.d/proxy.inc;
     }
