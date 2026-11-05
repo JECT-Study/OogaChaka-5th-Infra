@@ -17,8 +17,17 @@ variable "admin_cidr" {
 
 variable "discord_webhook_url" {
     type = string
-    sensitive = true
     description = "RDS 시작/종료 알림을 보낼 Discord 웹훅 URL (terraform.tfvars 에 작성, 커밋 금지)"
+}
+
+variable "domain" {
+    type = string
+    description = "web 서버 도메인 (예: dev.example.com). 비우면 HTTPS 없이 80 포트만 사용. DNS A 레코드를 web EIP 로 연결해 둘 것"
+}
+
+variable "cert_email" {
+    type = string
+    description = "Let's Encrypt 인증서 발급/만료 알림 이메일. domain 과 함께 지정해야 HTTPS 가 켜진다"
 }
 
 variable "db_name" {

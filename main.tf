@@ -139,7 +139,17 @@ module "rds_sg" {
     vpc_id = module.vpc.vpc_id
 }
 
-# web ec2 보안그룹 443 22
+# web ec2 보안그룹 80 443 22
+# 80: Let's Encrypt 검증 서버(IP 고정 아님)가 접속하므로 전체 공개. nginx 는 /healthz, acme-challenge, https 리다이렉트를 처리
+module "web_in_http" {
+    source = "./modules/sg_ingress_rule"
+    security_group_id = module.web_sg.id
+    description = "HTTP (Lets Encrypt, https redirect)"
+    from_port = 80
+    to_port = 80
+    cidr_ipv4 = "0.0.0.0/0"
+}
+
 module "web_in_https" {
     source = "./modules/sg_ingress_rule"
     security_group_id = module.web_sg.id
@@ -274,10 +284,17 @@ module "web_ec2" {
     associate_public_ip = true
     instance_name = "ooga_chaka_web"
     iam_instance_profile = module.ssm_iam.instance_profile_name
-    env_vars = {
-        APP_PRIVATE_IP = module.app_ec2.private_ip
-        LOG_PRIVATE_IP = module.log_ec2.private_ip
-    }
+    env_vars = merge(
+        {
+            APP_PRIVATE_IP = module.app_ec2.private_ip
+            LOG_PRIVATE_IP = module.log_ec2.private_ip
+        },
+        # 둘 다 지정했을 때만 기록 -> nginx deploy.sh 가 Let's Encrypt 로 HTTPS 를 켠다
+        var.domain != "" && var.cert_email != "" ? {
+            DOMAIN     = var.domain
+            CERT_EMAIL = var.cert_email
+        } : {}
+    )
 }
 
 
@@ -568,4 +585,31 @@ module "web_github_deploy" {
     branch = "nginx"
     deploy_bucket_arn = module.deploy_bucket.bucket_arn
     target_name_tag = "ooga_chaka_web"
+}
+
+# app : GitHub Actions -> S3 업로드 + SSM(Name 태그) 로 app EC2 에 배포
+module "app_github_deploy" {
+    source = "./modules/github_oidc"
+    role_name = "ooga_chaka_github_deploy_app"
+    oidc_provider_arn = module.github_oidc_provider.arn
+    # app 은 Infra 가 아니라 Server 저장소(JECT-Study/OogaChaka-5th-Server)의 dev 브랜치에서 배포한다
+    github_repo = "JECT-Study/OogaChaka-5th-Server"
+    github_owner_id = "155141962"
+    github_repo_id = "1434556868"
+    branch = "dev"
+    deploy_bucket_arn = module.deploy_bucket.bucket_arn
+    target_name_tag = "ooga_chaka_app"
+}
+
+# log : GitHub Actions -> S3 업로드 + SSM(Name 태그) 로 log EC2 에 배포
+module "log_github_deploy" {
+    source = "./modules/github_oidc"
+    role_name = "ooga_chaka_github_deploy_log"
+    oidc_provider_arn = module.github_oidc_provider.arn
+    github_repo = "JECT-Study/OogaChaka-5th-Infra"
+    github_owner_id = "155141962"
+    github_repo_id = "1431137998"
+    branch = "log"
+    deploy_bucket_arn = module.deploy_bucket.bucket_arn
+    target_name_tag = "ooga_chaka_log"
 }

@@ -42,3 +42,11 @@ output "deploy_bucket_name" {
 output "web_github_deploy_role_arn" {
     value = module.web_github_deploy.role_arn
 }
+
+output "app_github_deploy_role_arn" {
+    value = module.app_github_deploy.role_arn
+}
+
+output "log_github_deploy_role_arn" {
+    value = module.log_github_deploy.role_arn
+}
