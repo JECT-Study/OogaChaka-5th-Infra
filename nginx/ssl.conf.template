@@ -1,0 +1,17 @@
+# 443 포트. 인증서가 발급된 경우에만 deploy.sh 가 이 파일을 nginx 에 마운트한다 (SSL_TEMPLATE).
+# 인증서가 없는 상태에서 로드하면 nginx 가 시작되지 않는다.
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    location / {
+        include /etc/nginx/conf.d/proxy.inc;
+    }
+}

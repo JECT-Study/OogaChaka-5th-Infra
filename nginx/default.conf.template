@@ -1,6 +1,10 @@
+# 80 포트. HTTPS_ENABLED=1 (인증서 발급됨) 이면 http -> https 로 리다이렉트한다.
+# 443 server 는 인증서가 있을 때만 로드되는 ssl.conf.template 에 있다.
 server {
     listen 80 default_server;
     server_name _;
+
+    set $https_enabled "${HTTPS_ENABLED}";
 
     # 배포 스크립트의 상태 확인용
     location = /healthz {
@@ -9,13 +13,15 @@ server {
         return 200 "ok\n";
     }
 
-    # app 서버 (Spring Boot 8080)
+    # Let's Encrypt 인증서 발급/갱신 (certbot webroot)
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
     location / {
-        proxy_pass http://${APP_PRIVATE_IP}:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        if ($https_enabled = "1") {
+            return 301 https://$host$request_uri;
+        }
+        include /etc/nginx/conf.d/proxy.inc;
     }
 }

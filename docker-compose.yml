@@ -1,4 +1,5 @@
-# web EC2 에서 실행하는 nginx (리버스 프록시)
+# web EC2 에서 실행하는 nginx (리버스 프록시) + certbot (Let's Encrypt)
+# HTTPS_ENABLED / SSL_TEMPLATE 은 deploy.sh 가 같은 폴더의 .env 에 기록한다 (기본값: SSL 끔)
 name: ooga-nginx
 
 services:
@@ -8,13 +9,29 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     env_file:
-      - /etc/ooga/env
+      - /etc/ooga/env   # APP_PRIVATE_IP, DOMAIN (선택), CERT_EMAIL (선택)
+    environment:
+      HTTPS_ENABLED: ${HTTPS_ENABLED:-0}
     volumes:
-      # nginx 이미지가 시작할 때 ${APP_PRIVATE_IP} 를 치환해 /etc/nginx/conf.d/default.conf 를 만든다
+      # nginx 이미지가 시작할 때 ${APP_PRIVATE_IP}, ${DOMAIN} 등을 치환해 /etc/nginx/conf.d/ 에 설정을 만든다
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/proxy.inc.template:/etc/nginx/templates/proxy.inc.template:ro
+      # 인증서가 있으면 ssl.conf.template, 없으면 빈 파일
+      - ./nginx/${SSL_TEMPLATE:-ssl.off.template}:/etc/nginx/templates/ssl.conf.template:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+  # 평소에는 뜨지 않고 deploy.sh 가 `docker compose run --rm certbot ...` 으로 발급/갱신할 때만 실행된다
+  certbot:
+    image: certbot/certbot:latest
+    profiles: ["certbot"]
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/www/certbot:/var/www/certbot
