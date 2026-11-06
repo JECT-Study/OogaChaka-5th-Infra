@@ -27,10 +27,7 @@ docker compose pull
 env_val() { grep -m1 "^$1=" /etc/ooga/env 2>/dev/null | cut -d= -f2- | tr -d '"\r' || true; }
 DOMAIN=$(env_val DOMAIN)
 CERT_EMAIL=$(env_val CERT_EMAIL)
-EXTRA_DOMAINS=$(env_val EXTRA_DOMAINS)       # 선택: 같은 인증서에 넣을 추가 도메인 (쉼표 구분)
-ALL_DOMAINS=$DOMAIN${EXTRA_DOMAINS:+,$EXTRA_DOMAINS}
 CERT_DIR=/etc/letsencrypt/live/$DOMAIN
-DOMAINS_FILE=/etc/letsencrypt/ooga-domains   # 마지막으로 발급한 도메인 목록 (바뀌면 --expand 로 재발급)
 
 mkdir -p /etc/letsencrypt /var/www/certbot
 
@@ -102,12 +99,10 @@ done
 if [ "$healthy" = 1 ]; then
     if [ -n "$DOMAIN" ] && [ -n "$CERT_EMAIL" ]; then
         # 처음 배포라 인증서가 없으면 발급 (80 포트 nginx 가 /.well-known/acme-challenge 를 서빙 중)
-        # 인증서가 없거나, 도메인 목록이 지난 발급 때와 달라졌으면 발급/확장
-        if [ ! -f "$CERT_DIR/fullchain.pem" ] || [ "$(cat "$DOMAINS_FILE" 2>/dev/null)" != "$ALL_DOMAINS" ]; then
-            echo "[deploy] 인증서 발급: $ALL_DOMAINS"
+        if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
+            echo "[deploy] 인증서 발급: $DOMAIN"
             if docker compose run --rm certbot certonly --webroot -w /var/www/certbot \
-                -d "$ALL_DOMAINS" --expand --email "$CERT_EMAIL" --agree-tos --no-eff-email --non-interactive; then
-                echo "$ALL_DOMAINS" > "$DOMAINS_FILE"
+                -d "$DOMAIN" --email "$CERT_EMAIL" --agree-tos --no-eff-email --non-interactive; then
                 set_mode https
                 docker compose run --rm --no-deps nginx nginx -t
                 systemctl restart "$UNIT_NAME"
