@@ -3,7 +3,9 @@
 1. DynamoDB 에서 만료된 세션을 찾는다.
 2. 활성 세션이 쓰지 않는 IP 의 보안그룹 규칙(설명이 RULE_DESCRIPTION 인 것만)을 삭제한다.
 3. 만료된 세션 항목을 삭제한다.
-4. 이번에 만료된 세션이 있고 남은 활성 세션이 없으면 EC2 와 RDS 를 종료한다.
+4. 활성 세션이 없으면 실제로 켜져 있는 EC2(running) 와 RDS(available) 를 종료한다.
+   "이번에 만료된 세션이 있는가" 가 아니라 현재 상태를 기준으로 하므로, 종료에 실패해도(pending, starting 등)
+   다음 실행에서 다시 시도한다. 막 켜진 EC2 는 STOP_GRACE_MINUTES 동안 종료하지 않는다.
 """
 import os
 import time
@@ -19,6 +21,8 @@ SECURITY_GROUP_ID = os.environ["SECURITY_GROUP_ID"]
 INSTANCE_IDS = [i.strip() for i in os.environ["INSTANCE_IDS"].split(",") if i.strip()]
 RULE_DESCRIPTION = os.environ.get("RULE_DESCRIPTION", "ooga-access")
 DB_INSTANCE_ID = os.environ.get("DB_INSTANCE_ID", "")
+# 로그인 직후 켜진 EC2 를 바로 종료하지 않기 위한 보호 시간
+STOP_GRACE_SECONDS = int(float(os.environ.get("STOP_GRACE_MINUTES", "15")) * 60)
 
 
 def _scan_sessions():
@@ -59,9 +63,32 @@ def _revoke_stale_rules(active_cidrs):
     return len(stale_ids)
 
 
-def _stop_instances():
+def _stoppable_instance_ids(now):
+    """running 이면서 켜진 지 STOP_GRACE_SECONDS 가 지난 EC2 만 종료 대상 (pending, stopping 등은 건너뜀)"""
     try:
-        ec2.stop_instances(InstanceIds=INSTANCE_IDS)
+        resp = ec2.describe_instances(InstanceIds=INSTANCE_IDS)
+    except ClientError as e:
+        print(f"describe_instances failed: {e}")
+        return []
+
+    ids = []
+    for reservation in resp["Reservations"]:
+        for instance in reservation["Instances"]:
+            if instance["State"]["Name"] != "running":
+                continue
+            # LaunchTime 은 중지 후 다시 시작할 때마다 갱신된다
+            if now - instance["LaunchTime"].timestamp() < STOP_GRACE_SECONDS:
+                print(f"skip {instance['InstanceId']}: started recently")
+                continue
+            ids.append(instance["InstanceId"])
+    return ids
+
+
+def _stop_instances(instance_ids):
+    if not instance_ids:
+        return False
+    try:
+        ec2.stop_instances(InstanceIds=instance_ids)
     except ClientError as e:
         print(f"stop_instances failed: {e}")
         return False
@@ -69,10 +96,14 @@ def _stop_instances():
 
 
 def _stop_database():
-    """RDS 중지. 이미 중지됐거나 상태 전환 중이면 다음 실행에서 다시 시도한다."""
+    """RDS 중지. available 일 때만 시도하고, starting 등 전환 중이면 다음 실행에서 다시 시도한다."""
     if not DB_INSTANCE_ID:
         return False
     try:
+        db = rds.describe_db_instances(DBInstanceIdentifier=DB_INSTANCE_ID)["DBInstances"][0]
+        if db["DBInstanceStatus"] != "available":
+            print(f"skip database: status={db['DBInstanceStatus']}")
+            return False
         rds.stop_db_instance(DBInstanceIdentifier=DB_INSTANCE_ID)
     except ClientError as e:
         print(f"stop_db_instance failed: {e}")
@@ -96,8 +127,12 @@ def lambda_handler(event, context):
 
     stopped = False
     db_stopped = False
-    if expired and not active:
-        stopped = _stop_instances()
+    if not active:
+        # 종료 직전에 다시 확인 (그 사이 새로 로그인한 세션이 있으면 종료하지 않는다)
+        now = int(time.time())
+        active = [s for s in _scan_sessions() if int(s["expires_at"]) > now]
+    if not active:
+        stopped = _stop_instances(_stoppable_instance_ids(now))
         db_stopped = _stop_database()
 
     result = {

@@ -495,6 +495,11 @@ module "stop_ec2_iam" {
             resources = [local.db_arn]
         },
         {
+            sid = "DescribeInstances"
+            actions = ["ec2:DescribeInstances"]
+            resources = ["*"]
+        },
+        {
             sid = "DescribeRules"
             actions = ["ec2:DescribeSecurityGroupRules"]
             resources = ["*"]
