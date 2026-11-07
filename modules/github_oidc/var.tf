@@ -38,3 +38,9 @@ variable "target_name_tag" {
   type        = string
   description = "SSM 명령을 보낼 EC2 의 Name 태그 값"
 }
+
+variable "ecr_push_repository_arns" {
+  type        = list(string)
+  default     = []
+  description = "이미지를 push 할 ECR 저장소 ARN 목록 (비어 있으면 ECR 권한 없음)"
+}

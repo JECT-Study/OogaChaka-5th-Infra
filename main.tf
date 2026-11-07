@@ -266,10 +266,34 @@ module "deploy_bucket" {
     bucket_name = "ooga-chaka-deploy-${local.account_id}"
 }
 
-# EC2 인스턴스 프로파일 (SSM 등록 + 배포 버킷 읽기)
-module "ssm_iam" {
+# ECR 저장소 (app 전용, 이미지는 최신 2개만 보관)
+module "ecr_app" {
+    source = "./modules/ecr"
+    name = "oogachaka_app"
+}
+
+# EC2 인스턴스 프로파일 (SSM 등록 + 배포 버킷 읽기, app 은 ECR 저장소 pull 추가)
+moved {
+    from = module.ssm_iam
+    to = module.web_ssm_iam
+}
+
+module "web_ssm_iam" {
     source = "./modules/ssm_iam"
     name = "ooga_chaka_ssm_ec2"
+    deploy_bucket_arn = module.deploy_bucket.bucket_arn
+}
+
+module "app_ssm_iam" {
+    source = "./modules/ssm_iam"
+    name = "ooga_chaka_ssm_app"
+    deploy_bucket_arn = module.deploy_bucket.bucket_arn
+    ecr_pull_repository_arns = [module.ecr_app.repository_arn]
+}
+
+module "log_ssm_iam" {
+    source = "./modules/ssm_iam"
+    name = "ooga_chaka_ssm_log"
     deploy_bucket_arn = module.deploy_bucket.bucket_arn
 }
 
@@ -283,7 +307,7 @@ module "web_ec2" {
     key_name = var.key_name
     associate_public_ip = true
     instance_name = "ooga_chaka_web"
-    iam_instance_profile = module.ssm_iam.instance_profile_name
+    iam_instance_profile = module.web_ssm_iam.instance_profile_name
     env_vars = merge(
         {
             APP_PRIVATE_IP = module.app_ec2.private_ip
@@ -308,7 +332,7 @@ module "app_ec2" {
     key_name = var.key_name
     associate_public_ip = true    # NAT 없이 IGW 로 outbound 하기 위해 필요
     instance_name = "ooga_chaka_app"
-    iam_instance_profile = module.ssm_iam.instance_profile_name
+    iam_instance_profile = module.app_ssm_iam.instance_profile_name
 }
 
 # log EC2
@@ -321,7 +345,7 @@ module "log_ec2" {
     key_name = var.key_name
     associate_public_ip = true
     instance_name = "ooga_chaka_log"
-    iam_instance_profile = module.ssm_iam.instance_profile_name
+    iam_instance_profile = module.log_ssm_iam.instance_profile_name
 }
 
 
@@ -603,6 +627,7 @@ module "app_github_deploy" {
     github_repo_id = "1434556868"
     branch = "dev"
     deploy_bucket_arn = module.deploy_bucket.bucket_arn
+    ecr_push_repository_arns = [module.ecr_app.repository_arn]
     target_name_tag = "ooga_chaka_app"
 }
 

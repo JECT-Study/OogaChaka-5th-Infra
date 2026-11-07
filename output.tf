@@ -50,3 +50,7 @@ output "app_github_deploy_role_arn" {
 output "log_github_deploy_role_arn" {
     value = module.log_github_deploy.role_arn
 }
+
+output "ecr_app_repository_url" {
+    value = module.ecr_app.repository_url
+}

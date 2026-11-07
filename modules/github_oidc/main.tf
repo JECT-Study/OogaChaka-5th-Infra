@@ -78,6 +78,35 @@ data "aws_iam_policy_document" "deploy" {
   }
 }
 
+# ECR 이미지 push 전용 (지정한 저장소만)
+data "aws_iam_policy_document" "ecr_push" {
+  statement {
+    sid       = "EcrAuth"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "EcrPush"
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:InitiateLayerUpload",
+      "ecr:UploadLayerPart",
+      "ecr:CompleteLayerUpload",
+      "ecr:PutImage",
+    ]
+    resources = var.ecr_push_repository_arns
+  }
+}
+
+resource "aws_iam_role_policy" "ecr_push" {
+  count = length(var.ecr_push_repository_arns) > 0 ? 1 : 0
+
+  name   = "${var.role_name}-ecr-push"
+  role   = aws_iam_role.github.id
+  policy = data.aws_iam_policy_document.ecr_push.json
+}
+
 resource "aws_iam_role_policy" "deploy" {
   name   = "${var.role_name}-policy"
   role   = aws_iam_role.github.id

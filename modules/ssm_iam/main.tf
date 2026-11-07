@@ -43,3 +43,30 @@ resource "aws_iam_instance_profile" "ec2" {
   name = var.name
   role = aws_iam_role.ec2.name
 }
+
+# ECR 이미지 pull 전용 (지정한 저장소만, push 불가)
+data "aws_iam_policy_document" "ecr_pull" {
+  statement {
+    sid       = "EcrAuth"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "EcrPull"
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchGetImage",
+    ]
+    resources = var.ecr_pull_repository_arns
+  }
+}
+
+resource "aws_iam_role_policy" "ecr_pull" {
+  count = length(var.ecr_pull_repository_arns) > 0 ? 1 : 0
+
+  name   = "${var.name}-ecr-pull"
+  role   = aws_iam_role.ec2.id
+  policy = data.aws_iam_policy_document.ecr_pull.json
+}
