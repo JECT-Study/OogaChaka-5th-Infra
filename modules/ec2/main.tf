@@ -39,4 +39,10 @@ resource "aws_instance" "ec2" {
   tags = {
     Name = var.instance_name
   }
+
+  # 인스턴스가 중지되면 자동 할당 공인 IP 가 풀려 false 로 읽히고, 이게 true 와 달라 "교체" 로 잡힌다.
+  # 이 값은 생성 시점에만 의미가 있으므로 이후 변경은 무시한다
+  lifecycle {
+    ignore_changes = [associate_public_ip_address]
+  }
 }

@@ -189,7 +189,7 @@ module "app_in_ssh" {
 }
 
 
-# log ec2 보안그룹 3100  3000 22
+# log ec2 보안그룹 3100  3000 22 6379
 module "log_in_loki" {
     source = "./modules/sg_ingress_rule"
     security_group_id = module.log_sg.id
@@ -197,6 +197,25 @@ module "log_in_loki" {
     from_port = 3100
     to_port = 3100
     referenced_security_group_id = module.app_sg.id
+}
+
+module "log_in_redis" {
+    source = "./modules/sg_ingress_rule"
+    security_group_id = module.log_sg.id
+    description = "Redis from app"
+    from_port = 6379
+    to_port = 6379
+    referenced_security_group_id = module.app_sg.id
+}
+
+# web(베스천) 에서 SSH 터널로 Redis 에 접속할 수 있도록 허용
+module "log_in_redis_web" {
+    source = "./modules/sg_ingress_rule"
+    security_group_id = module.log_sg.id
+    description = "Redis from web (bastion tunnel)"
+    from_port = 6379
+    to_port = 6379
+    referenced_security_group_id = module.web_sg.id
 }
 
 module "log_in_grafana" {
@@ -346,6 +365,10 @@ module "log_ec2" {
     associate_public_ip = true
     instance_name = "ooga_chaka_log"
     iam_instance_profile = module.log_ssm_iam.instance_profile_name
+    # 부팅할 때마다 /etc/ooga/env 에 기록된다 (log 저장소의 Redis deploy.sh / compose 가 읽음)
+    env_vars = {
+        REDIS_PASSWORD = var.redis_password
+    }
 }
 
 
@@ -354,6 +377,13 @@ module "web_eip" {
     source = "./modules/eip"
     name = "ooga_chaka_web_eip"
     instance_id = module.web_ec2.instance_id
+}
+
+# log EC2 에도 eip 연결 (중지/시작이나 apply 때 공인 IP 가 풀려 EC2 가 교체 대상으로 잡히는 것을 막는다)
+module "log_eip" {
+    source = "./modules/eip"
+    name = "ooga_chaka_log_eip"
+    instance_id = module.log_ec2.instance_id
 }
 
 # rds
