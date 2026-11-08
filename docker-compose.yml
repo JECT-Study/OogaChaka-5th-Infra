@@ -1,0 +1,38 @@
+# log EC2 에서 실행하는 Redis (app 서버가 private IP 로 접속)
+name: ooga-redis
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ooga-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"      # 접근 제한은 보안그룹(app SG 만 허용)이 담당
+    env_file:
+      - /etc/ooga/env   # REDIS_PASSWORD
+    # log EC2(t4g.small, 2GB)는 Grafana/Loki 와 같이 쓰므로 메모리를 제한한다
+    # volatile-lru: 만료(TTL)가 있는 키만 밀어낸다. TTL 없는 데이터가 가득 차면 쓰기 오류가 나서 알 수 있다
+    command:
+      - sh
+      - -c
+      - >
+        exec redis-server
+        --requirepass "$$REDIS_PASSWORD"
+        --appendonly yes
+        --maxmemory 256mb
+        --maxmemory-policy volatile-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis-data:    # AOF 파일 보관. 배포(파일 덮어쓰기)와 EC2 중지/시작에도 유지된다

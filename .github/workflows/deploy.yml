@@ -1,4 +1,4 @@
-name: Deploy log (Grafana/Loki)
+name: Deploy log (Redis / Grafana / Loki)
 
 # log 브랜치에 push 하면 S3 에 올리고 SSM 으로 log EC2 에 배포한다.
 # AWS 인증은 OIDC (Terraform 의 log_github_deploy 역할, log 브랜치만 허용)
@@ -29,8 +29,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check deploy.sh
+        run: |
+          test -f deploy.sh || { echo "::error::저장소 루트에 deploy.sh 가 없습니다"; exit 1; }
+          bash -n deploy.sh
 
-          # (임시) OIDC 로그인 실패 원인 확인용 - 해결되면 이 단계는 삭제
+      # (임시) OIDC 로그인 실패 원인 확인용 - 해결되면 이 단계는 삭제
       - name: Debug OIDC claims
         env:
           ROLE: ${{ vars.AWS_ROLE_ARN_LOG }}
@@ -47,10 +51,82 @@ jobs:
               print(k, "=", c.get(k))
           ' "${TOKEN}"
 
-      # web 과 같은 저장소라서 변수 이름을 다르게 쓴다.
-      # 저장소 Settings > Secrets and variables > Actions > Variables 에 AWS_ROLE_ARN_LOG 등록
+      # (임시) OIDC 로그인 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN_LOG }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Package
+        run: tar czf "${RUNNER_TEMP}/log.tar.gz" --exclude=.git --exclude=.github .
+
+      - name: Upload to S3
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "BUCKET=ooga-chaka-deploy-${ACCOUNT_ID}" >> "$GITHUB_ENV"
+          echo "KEY=log/${GITHUB_SHA}.tar.gz" >> "$GITHUB_ENV"
+          aws s3 cp "${RUNNER_TEMP}/log.tar.gz" "s3://ooga-chaka-deploy-${ACCOUNT_ID}/log/${GITHUB_SHA}.tar.gz"
+
+      - name: Deploy to log EC2 (SSM Run Command)
+        run: |
+          # log EC2 에서 실행될 스크립트 (S3 에서 받아 풀고 deploy.sh 실행)
+          cat > remote.sh <<'EOF'
+          # SSM RunShellScript 는 Ubuntu 에서 sh(dash) 로 실행하므로 bash 로 다시 실행한다
+          [ -n "${BASH_VERSION:-}" ] || exec bash "$0" "$@"
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          export AWS_DEFAULT_REGION=__REGION__
+          if ! command -v aws >/dev/null 2>&1; then
+              apt-get update -y
+              apt-get install -y unzip curl
+              curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+              unzip -q -o /tmp/awscliv2.zip -d /tmp
+              /tmp/aws/install --update
+          fi
+          DEST=/opt/ooga/log
+          TMP=$(mktemp -d)
+          aws s3 cp "s3://__BUCKET__/__KEY__" "$TMP/log.tar.gz"
+          # 데이터(도커 볼륨)는 /opt/ooga/log 밖에 있으므로 폴더를 지우지 않고 덮어쓴다
+          mkdir -p "$DEST"
+          tar -xzf "$TMP/log.tar.gz" -C "$DEST"
+          rm -rf "$TMP"
+          bash "$DEST/deploy.sh"
+          EOF
+          sed -i "s|__REGION__|${AWS_REGION}|; s|__BUCKET__|${BUCKET}|; s|__KEY__|${KEY}|" remote.sh
+          jq -Rs '{commands: [.]}' remote.sh > params.json
+
+          CMD_ID=$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --targets "Key=tag:Name,Values=${TARGET_NAME_TAG}" \
+            --parameters file://params.json \
+            --timeout-seconds 900 \
+            --comment "log ${GITHUB_SHA::7}" \
+            --query Command.CommandId --output text)
+          echo "command id: ${CMD_ID}"
+
+          INSTANCE_ID=""
+          STATUS=""
+          for i in $(seq 1 180); do
+            sleep 5
+            read -r INSTANCE_ID STATUS <<< "$(aws ssm list-command-invocations \
+              --command-id "${CMD_ID}" \
+              --query 'CommandInvocations[0].[InstanceId,Status]' --output text)"
+            if [ "${INSTANCE_ID}" = "None" ] || [ -z "${INSTANCE_ID}" ]; then
+              if [ "$i" -ge 12 ]; then
+                echo "::error::대상 EC2(Name=${TARGET_NAME_TAG})를 찾지 못했습니다. 서버가 꺼져 있으면 로그인 페이지에서 켠 뒤 다시 실행하세요."
+                exit 1
+              fi
+              continue
+            fi
+            case "${STATUS}" in
+              Success|Failed|TimedOut|Cancelled|Cancelling|DeliveryTimedOut|ExecutionTimedOut|Undeliverable|Terminated) break ;;
+            esac
+          done
+
+          echo "instance: ${INSTANCE_ID}  status: ${STATUS}"
+          aws ssm get-command-invocation \
+            --command-id "${CMD_ID}" --instance-id "${INSTANCE_ID}" \
+            --plugin-name aws:runShellScript \
+            --query '[StandardOutputContent,StandardErrorContent]' --output text || true
+
+          [ "${STATUS}" = "Success" ]
