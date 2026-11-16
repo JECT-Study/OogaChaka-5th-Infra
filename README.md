@@ -35,3 +35,22 @@ printf '{"streams":[{"stream":{"service":"logging-smoke"},"values":[["%s00000000
 브라우저에서 `http://127.0.0.1:3000`을 열고 `admin` / `local-test-grafana`로 접속한다.
 **Explore**에서 Loki를 선택하고 `{service="logging-smoke"}`를 조회해 테스트 로그가 보이는지 확인한다.
 확인이 끝나면 `docker compose -p ooga-logging-local down`으로 종료한다.
+
+## App EC2의 로그 수집
+
+Alloy는 App EC2에서 `oogachaka-app` 컨테이너의 Docker 로그를 읽고 Log EC2의 Loki로 보낸다.
+App EC2에서 Log EC2 내부 주소의 `3100`번 포트에 접근할 수 있어야 한다.
+Docker 소켓은 호스트의 Docker API에 대한 접근 권한을 주므로 Alloy 관리 화면의 포트는 공개하지 않는다.
+
+`log` 브랜치 자동 배포가 만든 S3 배포 묶음에서 `alloy/`를 가져와 App EC2의 `/opt/ooga/alloy`에 둔다.
+같은 디렉터리의 `.env`에 `LOKI_PUSH_URL=http://<Log EC2 내부 주소>:3100/loki/api/v1/push`를 설정한다.
+App EC2에서 아래 순서대로 구성 검증과 실행을 진행한다.
+
+```bash
+cd /opt/ooga/alloy
+sudo docker compose run --rm alloy validate /etc/alloy/config.alloy
+sudo docker compose up -d
+sudo docker compose logs --tail 30 alloy
+```
+
+Grafana의 **Explore**에서 `{service="oogachaka-app"}`을 조회해 백엔드 로그를 확인한다.
