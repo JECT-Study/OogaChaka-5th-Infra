@@ -9,7 +9,7 @@ services:
     ports:
       - "6379:6379"      # 접근 제한은 보안그룹(app SG 만 허용)이 담당
     env_file:
-      - /etc/ooga/env   # REDIS_PASSWORD
+      - ${OOGA_REDIS_ENV_FILE:-/etc/ooga/env}   # REDIS_PASSWORD
     # log EC2(t4g.small, 2GB)는 Grafana/Loki 와 같이 쓰므로 메모리를 제한한다
     # volatile-lru: 만료(TTL)가 있는 키만 밀어낸다. TTL 없는 데이터가 가득 차면 쓰기 오류가 나서 알 수 있다
     command:
@@ -34,5 +34,28 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  loki:
+    image: grafana/loki:3.7.0
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "${OOGA_LOKI_BIND_IP:-0.0.0.0}:3100:3100"
+    volumes:
+      - ./loki/config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - ${OOGA_GRAFANA_ENV_FILE:-/etc/ooga/grafana.env}
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/loki.yml:ro
+      - grafana-data:/var/lib/grafana
+
 volumes:
   redis-data:    # AOF 파일 보관. 배포(파일 덮어쓰기)와 EC2 중지/시작에도 유지된다
+  loki-data:
+  grafana-data:
