@@ -48,7 +48,7 @@ services:
     image: grafana/grafana:13.2.4
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${OOGA_GRAFANA_BIND_IP:-127.0.0.1}:3000:3000"
     env_file:
       - ${OOGA_GRAFANA_ENV_FILE:-/etc/ooga/grafana.env}
     volumes:

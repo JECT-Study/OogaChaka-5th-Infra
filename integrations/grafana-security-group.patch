@@ -1,0 +1,15 @@
+--- a/main.tf
++++ b/main.tf
+@@ -221,10 +221,10 @@
+ module "log_in_grafana" {
+     source = "./modules/sg_ingress_rule"
+     security_group_id = module.log_sg.id
+-    description = "Grafana"
++    description = "Grafana from web (nginx)"
+     from_port = 3000
+     to_port = 3000
+-    cidr_ipv4 = var.admin_cidr
++    referenced_security_group_id = module.web_sg.id
+ }
+ 
+ module "log_in_ssh" {

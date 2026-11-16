@@ -8,7 +8,7 @@ Redis, Loki, Grafana는 한 Compose 프로젝트에서 실행하며 각각의 �
 Loki는 로그를 7일 동안 보관하고, Grafana에서는 Loki를 기본 데이터 소스로 사용한다.
 
 첫 배포 전에 Log EC2의 `/etc/ooga/grafana.env`에 `GF_SECURITY_ADMIN_PASSWORD`를 설정하고 파일 권한을 600으로 제한한다.
-Grafana는 Log EC2의 `127.0.0.1:3000`에서 확인한다. Nginx에서 연결할 때 Grafana 바인딩과 보안 그룹을 함께 조정한다.
+Grafana는 기본값으로 Log EC2의 `127.0.0.1:3000`에서 확인한다. Web EC2에서 연결하는 절차는 아래에 있다.
 Loki의 `3100`번 포트는 App EC2에서 접근하므로 배포 전에 Log EC2 보안 그룹에서 허용 범위를 확인한다.
 
 ### 맥에서 확인
@@ -54,3 +54,25 @@ sudo docker compose logs --tail 30 alloy
 ```
 
 Grafana의 **Explore**에서 `{service="oogachaka-app"}`을 조회해 백엔드 로그를 확인한다.
+
+## Web EC2의 Nginx에서 Grafana 연결
+
+팀은 기존 HTTPS 도메인의 `/grafana/`에서 Grafana에 접속한다. Nginx는 기존 `LOG_PRIVATE_IP`를 사용해 Log EC2의 `3000`번 포트로 전달한다.
+이 저장소의 `log`, `dev/test`, `nginx` 브랜치는 배포 대상이 다르다. 아래 패치 두 개는 로깅 PR에 함께 포함하되 각각 해당 브랜치에서 적용한다.
+
+1. `dev/test`에서 `integrations/grafana-security-group.patch`를 적용한다. Terraform 적용 후 Web EC2 보안 그룹에서 Log EC2의 Grafana 포트로 접근할 수 있는지 확인한다.
+2. Log EC2의 `/opt/ooga/log/.env`에 `OOGA_GRAFANA_BIND_IP=0.0.0.0`을 추가한다.
+   `/etc/ooga/grafana.env`에는 기존 관리자 비밀번호와 함께 아래 설정을 추가한다. 도메인 값은 Web EC2의 HTTPS 도메인에 맞춘다.
+
+   ```dotenv
+   GF_SERVER_ROOT_URL=https://test.oogachaka.co.kr/grafana/
+   GF_SERVER_SERVE_FROM_SUB_PATH=false
+   GF_SECURITY_COOKIE_SECURE=true
+   ```
+
+   `/opt/ooga/log`에서 `sudo docker compose up -d grafana`로 반영한다.
+3. `nginx` 브랜치에서 `integrations/grafana-nginx.patch`를 적용하고 기존 Nginx 배포로 반영한다.
+   Web EC2의 `/etc/ooga/env`에 `LOG_PRIVATE_IP`가 있는지 확인한다.
+4. 브라우저에서 `https://test.oogachaka.co.kr/grafana/`로 로그인하고, **Explore**에서 앱 로그를 조회한다.
+
+패치는 대상 브랜치의 작업 폴더에서 `git apply --check <패치 파일 경로>`로 확인한 뒤 `git apply <패치 파일 경로>`로 적용한다.
