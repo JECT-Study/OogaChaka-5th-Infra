@@ -1,0 +1,35 @@
+--- a/nginx/ssl.conf.template
++++ b/nginx/ssl.conf.template
+@@ -1,5 +1,10 @@
+ # 443 포트. 인증서가 발급된 경우에만 deploy.sh 가 이 파일을 nginx 에 마운트한다 (SSL_TEMPLATE).
+ # 인증서가 없는 상태에서 로드하면 nginx 가 시작되지 않는다.
++map $http_upgrade $grafana_connection_upgrade {
++    default upgrade;
++    '' close;
++}
++
+ server {
+     listen 443 ssl;
+     http2 on;
+@@ -18,6 +23,21 @@
+         return 200 "ok\n";
+     }
+ 
++    location = /grafana {
++        return 301 /grafana/;
++    }
++
++    location /grafana/ {
++        proxy_pass http://${LOG_PRIVATE_IP}:3000/;
++        proxy_http_version 1.1;
++        proxy_set_header Host $host;
++        proxy_set_header X-Real-IP $remote_addr;
++        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
++        proxy_set_header X-Forwarded-Proto $scheme;
++        proxy_set_header Upgrade $http_upgrade;
++        proxy_set_header Connection $grafana_connection_upgrade;
++    }
++
+     location / {
+         include /etc/nginx/conf.d/proxy.inc;
+     }

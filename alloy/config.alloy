@@ -1,0 +1,27 @@
+discovery.docker "app" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "10s"
+}
+
+discovery.relabel "app" {
+  targets = discovery.docker.app.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/oogachaka-app"
+    action        = "keep"
+  }
+}
+
+loki.source.docker "app" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.app.output
+  labels     = { service = "oogachaka-app" }
+  forward_to = [loki.write.log_server.receiver]
+}
+
+loki.write "log_server" {
+  endpoint {
+    url = sys.env("LOKI_PUSH_URL")
+  }
+}
