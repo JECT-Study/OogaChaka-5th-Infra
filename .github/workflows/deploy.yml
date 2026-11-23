@@ -68,7 +68,15 @@ jobs:
           aws s3 cp "${RUNNER_TEMP}/log.tar.gz" "s3://ooga-chaka-deploy-${ACCOUNT_ID}/log/${GITHUB_SHA}.tar.gz"
 
       - name: Deploy to log EC2 (SSM Run Command)
+        env:
+          GRAFANA_ENV_PARAMETER: ${{ vars.GRAFANA_ENV_PARAMETER }}
         run: |
+          set -euo pipefail
+          if [ -n "$GRAFANA_ENV_PARAMETER" ] &&
+             ! [[ "$GRAFANA_ENV_PARAMETER" =~ ^/[A-Za-z0-9_./-]+$ ]]; then
+            echo "::error::GRAFANA_ENV_PARAMETER에는 Parameter Store 경로를 입력하세요."
+            exit 1
+          fi
           # log EC2 에서 실행될 스크립트 (S3 에서 받아 풀고 deploy.sh 실행)
           cat > remote.sh <<'EOF'
           # SSM RunShellScript 는 Ubuntu 에서 sh(dash) 로 실행하므로 bash 로 다시 실행한다
@@ -90,9 +98,10 @@ jobs:
           mkdir -p "$DEST"
           tar -xzf "$TMP/log.tar.gz" -C "$DEST"
           rm -rf "$TMP"
-          bash "$DEST/deploy.sh"
+          GRAFANA_ENV_PARAMETER='__GRAFANA_ENV_PARAMETER__' bash "$DEST/deploy.sh"
           EOF
           sed -i "s|__REGION__|${AWS_REGION}|; s|__BUCKET__|${BUCKET}|; s|__KEY__|${KEY}|" remote.sh
+          sed -i "s|__GRAFANA_ENV_PARAMETER__|${GRAFANA_ENV_PARAMETER}|" remote.sh
           jq -Rs '{commands: [.]}' remote.sh > params.json
 
           CMD_ID=$(aws ssm send-command \
