@@ -16,10 +16,27 @@ fi
 REDIS_PASSWORD=$(grep -m1 '^REDIS_PASSWORD=' "$ENV_FILE" | cut -d= -f2- | tr -d '"\r')
 
 GRAFANA_ENV_FILE="${OOGA_GRAFANA_ENV_FILE:-/etc/ooga/grafana.env}"
+if [ -n "${GRAFANA_ENV_PARAMETER:-}" ]; then
+    install -d -m 755 "$(dirname "$GRAFANA_ENV_FILE")"
+    GRAFANA_ENV_TMP=$(mktemp "${GRAFANA_ENV_FILE}.XXXXXX")
+    trap 'rm -f "$GRAFANA_ENV_TMP"' EXIT
+    chmod 600 "$GRAFANA_ENV_TMP"
+    aws ssm get-parameter --name "$GRAFANA_ENV_PARAMETER" --with-decryption \
+        --region "${AWS_DEFAULT_REGION:-ap-northeast-2}" \
+        --query Parameter.Value --output text > "$GRAFANA_ENV_TMP"
+    if ! grep -q '^GF_SECURITY_ADMIN_PASSWORD=[^[:space:]].*' "$GRAFANA_ENV_TMP"; then
+        echo "[deploy] Parameter Store의 Grafana 설정에 관리자 비밀번호가 없습니다." >&2
+        exit 1
+    fi
+    mv "$GRAFANA_ENV_TMP" "$GRAFANA_ENV_FILE"
+    trap - EXIT
+fi
 if ! grep -q '^GF_SECURITY_ADMIN_PASSWORD=[^[:space:]].*' "$GRAFANA_ENV_FILE" 2>/dev/null; then
-    echo "[deploy] $GRAFANA_ENV_FILE 에 Grafana 관리자 비밀번호를 먼저 설정하세요." >&2
+    echo "[deploy] $GRAFANA_ENV_FILE 또는 GRAFANA_ENV_PARAMETER에 Grafana 관리자 설정이 필요합니다." >&2
     exit 1
 fi
+chmod 600 "$GRAFANA_ENV_FILE"
+export OOGA_GRAFANA_ENV_FILE="$GRAFANA_ENV_FILE"
 
 # docker 가 없으면 설치 (Ubuntu 24.04)
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1 ||
