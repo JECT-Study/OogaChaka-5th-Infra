@@ -11,7 +11,7 @@ services:
       - "80:80"
       - "443:443"
     env_file:
-      - /etc/ooga/env   # APP_PRIVATE_IP, DOMAIN (선택), CERT_EMAIL (선택)
+      - /etc/ooga/env   # APP_PRIVATE_IP, LOG_PRIVATE_IP, DOMAIN (선택), CERT_EMAIL (선택)
     environment:
       HTTPS_ENABLED: ${HTTPS_ENABLED:-0}
     volumes:
