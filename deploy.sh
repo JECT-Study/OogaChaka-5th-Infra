@@ -10,6 +10,12 @@ if ! grep -q '^APP_PRIVATE_IP=.\+' /etc/ooga/env 2>/dev/null; then
     exit 1
 fi
 
+# Grafana upstream 주소가 없으면 기존 서비스를 재시작하기 전에 중단한다.
+if ! grep -q '^LOG_PRIVATE_IP=.\+' /etc/ooga/env 2>/dev/null; then
+    echo "[deploy] /etc/ooga/env 에 LOG_PRIVATE_IP 가 없습니다 (Terraform env_vars 확인)" >&2
+    exit 1
+fi
+
 # docker 가 없으면 설치 (Ubuntu 24.04)
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
     echo "[deploy] docker 설치"
